@@ -49,6 +49,18 @@ import org.apache.zookeeper.server.util.ZxidUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+////////////////////////////////////////////////////////
+import org.apache.zookeeper.ZooDefs.OpCode;
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.lang.*;
+///////////////////////////////////////////////////////////////////
+
+
 /**
  * This class has the control logic for the Leader.
  */
@@ -296,6 +308,7 @@ public class Leader {
      */
     final static int INFORM = 8;
 
+
     ConcurrentMap<Long, Proposal> outstandingProposals = new ConcurrentHashMap<Long, Proposal>();
 
     ConcurrentLinkedQueue<Proposal> toBeApplied = new ConcurrentLinkedQueue<Proposal>();
@@ -527,6 +540,14 @@ public class Leader {
         isShutdown = true;
     }
 
+    static long startTime = 0;
+    static long endTime = 0;
+    static long consensusTime =0;
+    static long firstCommitTime = 0;
+    static long[] startConsensusTime = new long[10000];
+    //static long startRequest = 0;
+    //static long endRequest = 0;
+
     /**
      * Keep a count of acks that are received by the leader for a particular
      * proposal
@@ -581,6 +602,9 @@ public class Leader {
             LOG.debug("Count for zxid: 0x{} is {}",
                     Long.toHexString(zxid), p.ackSet.size());
         }
+        if(p.request.type == OpCode.setData && p.ackSet.size() == 1) {
+            firstCommitTime = System.nanoTime();
+        }
         if (self.getQuorumVerifier().containsQuorum(p.ackSet)){             
             if (zxid != lastCommitted+1) {
                 LOG.warn("Commiting zxid 0x{} from {} not first!",
@@ -595,6 +619,39 @@ public class Leader {
             if (p.request == null) {
                 LOG.warn("Going to commmit null request for proposal: {}", p);
             }
+
+            endTime = System.nanoTime();
+            int cursor = (int)(zxid%10000);
+            long firstAckConsensus = firstCommitTime - startConsensusTime[cursor];
+            consensusTime = endTime - startConsensusTime[cursor];
+
+            ////////////////////////////////////////////////
+            if(p.request.type == OpCode.setData){
+                String lujing = "/home/ning/consensus.txt";
+                File file = new File(lujing);
+                if (!file.getParentFile().exists()) {
+                    file.getParentFile().mkdirs();
+                }
+                try {
+                    file.createNewFile();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+
+                try {
+                    FileWriter fw = new FileWriter(file, true);
+                    BufferedWriter bw = new BufferedWriter(fw);
+                    bw.write(cursor + "  " +consensusTime + "  " + firstAckConsensus + "  " +p.ackSet.size() + "\n");
+                    bw.flush();
+                    bw.close();
+                    fw.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+
+            }
+        
+        //////////////////////////////////////////////////////////////
             commit(zxid);
             inform(p);
             zk.commitProcessor.commit(p.request);
@@ -757,6 +814,8 @@ public class Leader {
         } catch (IOException e) {
             LOG.warn("This really should be impossible", e);
         }
+
+
         QuorumPacket pp = new QuorumPacket(Leader.PROPOSAL, request.zxid, 
                 baos.toByteArray(), null);
         
@@ -767,6 +826,36 @@ public class Leader {
             if (LOG.isDebugEnabled()) {
                 LOG.debug("Proposing:: " + request);
             }
+            /////////////////////////////////////////////////////////
+            /*This code is added to record time*/
+            /*
+        String lujing = "/home/yining/test.txt";
+        File file = new File(lujing);
+        if (!file.getParentFile().exists()) {
+            file.getParentFile().mkdirs();
+        }
+        try {
+            file.createNewFile();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+          try {
+            FileWriter fw = new FileWriter(file, true);
+            BufferedWriter bw = new BufferedWriter(fw);
+            bw.write(System.nanoTime() + "   ");
+            bw.flush();
+            bw.close();
+            fw.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        */
+        int cursor = (int)(request.zxid%10000);
+        startConsensusTime[cursor] = System.nanoTime();
+
+        ///////////////////////////////////////////////////
+
 
             lastProposed = p.packet.getZxid();
             outstandingProposals.put(lastProposed, p);

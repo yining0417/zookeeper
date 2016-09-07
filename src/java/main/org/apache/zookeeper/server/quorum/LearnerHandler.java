@@ -48,6 +48,16 @@ import org.apache.zookeeper.txn.TxnHeader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+////////////////////////////////////////////////////////
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.lang.*;
+///////////////////////////////////////////////////////////////////
+
 /**
  * There will be an instance of this class created by the Leader for each
  * learner. All communication with a learner is handled by this
@@ -90,6 +100,15 @@ public class LearnerHandler extends Thread {
      */
     final LinkedBlockingQueue<QuorumPacket> queuedPackets =
         new LinkedBlockingQueue<QuorumPacket>();
+
+
+    /////////////////////////////////////////////////////
+        
+    static long[] addQueueTime = new long[10000];
+    static long sendFollowerTime = 0;
+    static long waitQueueTime = 0;
+    
+    ////////////////////////////////////////////////
 
     /**
      * This class controls the time that the Leader has been
@@ -205,6 +224,38 @@ public class LearnerHandler extends Thread {
                 if (p.getType() == Leader.PING) {
                     traceMask = ZooTrace.SERVER_PING_TRACE_MASK;
                 }
+                ///////////////////////////////////////////////////////////////////
+                
+                
+                if (p.getType() == Leader.PROPOSAL) {
+                    sendFollowerTime = System.nanoTime();
+                    int cursor = (int)(p.getZxid()%10000);
+                    waitQueueTime = sendFollowerTime - addQueueTime[cursor];
+                    String lujing = "/home/ning/waittime.txt";
+                    File file = new File(lujing);
+                    if (!file.getParentFile().exists()) {
+                        file.getParentFile().mkdirs();
+                    }
+                    try {
+                        file.createNewFile();
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+
+                    try {
+                        FileWriter fw = new FileWriter(file, true);
+                        BufferedWriter bw = new BufferedWriter(fw);
+                        bw.write(cursor + "  " + waitQueueTime + "\n");
+                        bw.flush();
+                        bw.close();
+                        fw.close();
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+
+                }
+                
+                ////////////////////////////////////////////////////////////////////
                 if (p.getType() == Leader.PROPOSAL) {
                     syncLimitCheck.updateProposal(p.getZxid(), System.nanoTime());
                 }
@@ -690,6 +741,12 @@ public class LearnerHandler extends Thread {
     }
 
     void queuePacket(QuorumPacket p) {
+        ///////////////////////////////////////////////
+        
+        int cursor = (int)(p.getZxid()%10000);
+        addQueueTime[cursor] = System.nanoTime();
+        
+        //////////////////////////////////////////////////
         queuedPackets.add(p);
     }
 
